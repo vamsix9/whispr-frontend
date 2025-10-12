@@ -1,0 +1,72 @@
+name: Deploy to AWS
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: string
+        default: 'staging'
+      bucket_name:
+        description: 'S3 bucket name for deployment'
+        required: true
+        type: string
+      cloudfront_distribution_id:
+        description: 'CloudFront distribution ID (optional)'
+        required: false
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        description: 'AWS Access Key ID'
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        description: 'AWS Secret Access Key'
+        required: true
+
+jobs:
+  deploy:
+    name: Deploy to AWS S3
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/ s3://${{ inputs.bucket_name }} --delete
+          echo "✅ Successfully deployed to S3 bucket: ${{ inputs.bucket_name }}"
+
+      - name: Invalidate CloudFront
+        if: inputs.cloudfront_distribution_id != ''
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ inputs.cloudfront_distribution_id }} \
+            --paths "/*"
+          echo "✅ CloudFront cache invalidated for distribution: ${{ inputs.cloudfront_distribution_id }}"
+
+      - name: Output deployment URL
+        run: |
+          echo "🚀 Deployment completed!"
+          echo "URL: https://${{ inputs.bucket_name }}.s3-website.us-east-1.amazonaws.com"
+          echo "Environment: ${{ inputs.environment }}"
