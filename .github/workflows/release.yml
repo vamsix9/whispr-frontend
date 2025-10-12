@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name || inputs.version }}
+          release_name: Release ${{ github.ref_name || inputs.version }}
+          body: |
+            ## 🚀 Release ${{ github.ref_name || inputs.version }}
+            
+            ### Changes
+            - Build artifacts included
+            - Production-ready build
+            
+            ### Build Info
+            - Node.js: ${{ env.NODE_VERSION }}
+            - Build Date: ${{ github.run_started_at }}
+            
+            ### Download
+            Download the build artifacts from the assets below.
+          draft: false
+          prerelease: false
+
+  upload-assets:
+    name: Upload Release Assets
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Create build archive
+        run: |
+          tar -czf build-${{ github.ref_name || inputs.version }}.tar.gz -C dist .
+          zip -r build-${{ github.ref_name || inputs.version }}.zip dist/
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build-${{ github.ref_name || inputs.version }}.tar.gz
+          asset_name: build-${{ github.ref_name || inputs.version }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Release Assets (ZIP)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build-${{ github.ref_name || inputs.version }}.zip
+          asset_name: build-${{ github.ref_name || inputs.version }}.zip
+          asset_content_type: application/zip

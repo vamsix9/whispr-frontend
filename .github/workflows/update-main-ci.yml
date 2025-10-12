@@ -1,0 +1,63 @@
+name: Update Main CI/CD
+
+on:
+  workflow_call:
+    inputs:
+      deployment_target:
+        description: 'Deployment target (aws, vercel, netlify)'
+        required: true
+        type: string
+        default: 'aws'
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: string
+        default: 'production'
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.deployment_target }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Deploy to AWS
+        if: inputs.deployment_target == 'aws'
+        uses: ./.github/workflows/deploy-aws.yml
+        with:
+          environment: ${{ inputs.environment }}
+          bucket_name: ${{ secrets.AWS_S3_BUCKET }}
+          cloudfront_distribution_id: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+        secrets:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Deploy to Vercel
+        if: inputs.deployment_target == 'vercel'
+        uses: ./.github/workflows/deploy-vercel.yml
+        with:
+          environment: ${{ inputs.environment }}
+        secrets:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy to Netlify
+        if: inputs.deployment_target == 'netlify'
+        run: |
+          echo "🚀 Deploying to Netlify..."
+          # Add Netlify deployment commands here
+          # Example: netlify deploy --prod --dir=dist
